@@ -79,7 +79,7 @@
     <h1>🎙️ AI議事録生成アシスタント</h1>
     
     <div class="card">
-        <form id="uploadForm">
+        <form id="uploadForm" onsubmit="uploadAudio(event)">
             <div class="upload-section">
                 <input type="file" id="audioFile" accept="audio/*" required>
             </div>
@@ -102,7 +102,7 @@
                     <span>📄 {{ m.filename }}</span>
                     <span style="color: #64748b; font-size: 12px; margin-left: 10px;">{{ m.created_at.strftime('%Y/%m/%d %H:%M') }}</span>
                 </div>
-                <button class="delete-btn" onclick="deleteMinute('{{ m.id }}')">削除</button>
+                <button class="delete-btn" onclick="event.stopPropagation(); deleteMinute('{{ m.id }}')">削除</button>
             </div>
 
             <div id="detail-{{ m.id }}" class="history-content">
@@ -127,80 +127,111 @@
     </div>
 
     <script>
+
         function toggleDetail(id) {
             const content = document.getElementById('detail-' + id);
-            content.style.display = content.style.display === 'block' ? 'none' : 'block';
+            if (!content) return;
+
+            // 現在の表示状態を確認して切り替える
+            if (content.style.display === 'none' || content.style.display === '') {
+                content.style.display = 'block';
+            } else {
+                content.style.display = 'none';
+            }
         }
 
-        // 既存の toggleDetail などの下に追加
-        async function deleteMinute(id) {
-            if (!confirm('この議事録を完全に削除してもよろしいですか？')) return;
+        let currentDeleteId = null; 
 
-            try {
-                const response = await fetch(`/delete/${id}`, { method: 'DELETE' });
-                if (response.ok) {
-                    // 成功したら画面を更新して、消えたことを反映させる
-                    location.reload();
-            } else {
-                alert('削除に失敗しました。');
-            }
-            } catch (err) {
-                console.error('Error:', err);
-                alert('通信エラーが発生しました。');
-            }
-        } 
-
-        let currentDeleteId = null; // 消そうとしているIDを一時保存する変数
-        // 1. ゴミ箱ボタンが押されたとき（モーダルを開く）
+        // 1. 削除ボタンが押されたとき（IDを記憶してモーダルを開く）
         function deleteMinute(id) {
+            console.log("Delete target ID:", id); // 確認用ログ
             currentDeleteId = id;
             const modal = document.getElementById('customModal');
-            modal.style.display = 'flex'; // style="display:none" を解除して表示
+            if (modal) {
+                modal.style.display = 'flex';
+            }
         }
 
-        // 2. キャンセルボタンが押されたとき（モーダルを閉じる）
+        // 2. キャンセルボタン（モーダルを閉じる）
         function closeModal() {
             document.getElementById('customModal').style.display = 'none';
-            currentDeleteId = null; // IDをクリア
+            currentDeleteId = null;
         }
 
-        // 3. モーダル内の「削除する」赤ボタンが押されたとき（実際の削除実行）
-        document.getElementById('confirmDeleteBtn').onclick = async () => {
+        // 3. モーダル内の「削除する」赤ボタンが押されたときの実行処理
+        async function executeDelete() {
             if (!currentDeleteId) return;
-        
+
             try {
                 const response = await fetch(`/delete/${currentDeleteId}`, { method: 'DELETE' });
+                const result = await response.json(); // サーバーからのメッセージを受け取る
+
                 if (response.ok) {
-                    location.reload(); // 成功したらリロードしてリストを更新
+                   alert(result.message); // 「削除に成功しました」を表示
+                   location.reload();    // OKを押した後にリロード
                 } else {
-                    alert('削除に失敗しました');
+                    alert('サーバーエラー: ' + (result.detail || '削除に失敗しました'));
                 }
             } catch (err) {
                 console.error('Error:', err);
                 alert('通信エラーが発生しました');
             } finally {
-                closeModal(); // 処理が終わったら（成功でも失敗でも）モーダルを閉じる
+                closeModal();
             }
-        };
+    }
 
-        const form = document.getElementById('uploadForm');
-        form.onsubmit = async (e) => {
-            e.preventDefault();
-            document.getElementById('loading').style.display = 'block';
-            document.getElementById('submitBtn').disabled = true;
+        // 画面読み込み時にボタンに関数を紐付ける（確実に動かすため）
+        window.addEventListener('DOMContentLoaded', () => {
+            const confirmBtn = document.getElementById('confirmDeleteBtn');
+            if (confirmBtn) {
+                confirmBtn.onclick = executeDelete;
+            }
+        });
+
+        async function uploadAudio(event) {
+            // ページのリロードを防ぐ
+            event.preventDefault();
+            const fileInput = document.getElementById('audioFile');
+            const loading = document.getElementById('loading');
+            const submitBtn = document.getElementById('submitBtn');
+
+            // ファイルチェック
+            if (!fileInput.files[0]) {
+                alert("ファイルを選択してください");
+            return;
+            }
+
+            // UIを「解析中」の状態にする
+            loading.style.display = 'block';
+            submitBtn.disabled = true;
+            submitBtn.innerText = '解析中...';
 
             const formData = new FormData();
-            formData.append('file', document.getElementById('audioFile').files[0]);
+            formData.append('file', fileInput.files[0]);
 
-            const response = await fetch('/upload', { method: 'POST', body: formData });
-            if (response.ok) {
-                location.reload(); // 保存されたらリロードして一覧を更新
-            } else {
-                alert('エラーが発生しました');
-                document.getElementById('loading').style.display = 'none';
-                document.getElementById('submitBtn').disabled = false;
+            try {
+                const response = await fetch('/upload', { 
+                method: 'POST', 
+                body: formData 
+            });
+
+                if (response.ok) {
+                    // 成功したら画面をリロードして一覧を更新
+                    location.reload();
+                } else {
+                    const errorData = await response.json();
+                    alert('エラーが発生しました: ' + (errorData.detail || '不明なエラー'));
+                }
+            } catch (error) {
+                console.error('通信エラー:', error);
+                alert('サーバーとの通信に失敗しました。');
+            } finally {
+                // 終わったらボタンなどを元に戻す
+                loading.style.display = 'none';
+                submitBtn.disabled = false;
+                submitBtn.innerText = 'AIで解析を開始する';
             }
-        };
+        }
 
         // テキストをクリップボードにコピーする関数
         async function handleCopy(buttonElement) {
@@ -231,7 +262,7 @@
         <p>この議事録を完全に削除してもよろしいですか？</p>
         <div style="display:flex; gap:10px; margin-top:20px;">
             <button onclick="closeModal()" style="background:#e2e8f0; color:#475569;">キャンセル</button>
-            <button id="confirmDeleteBtn" style="background:#ef4444; margin:0;">削除する</button>
+            <button id="confirmDeleteBtn" class="confirm-btn" onclick="executeDelete()" style="background:#ef4444; margin:0;">削除する</button>
         </div>
     </div>
 </div>

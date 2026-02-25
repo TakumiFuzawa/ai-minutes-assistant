@@ -119,28 +119,28 @@ async def upload_file(file: UploadFile = File(...), db: Session = Depends(get_db
             os.remove(file_location)
 
 @app.delete("/delete/{minute_id}")
-async def delete_minute(
-    minute_id: int = Path(..., title="削除する議事録のID"), 
-    db: Session = Depends(get_db)
-):
-    # 1. 該当するデータをDBから検索
+async def delete_minute(minute_id: int, db: Session = Depends(get_db)):
+    import os
+    # 1. まずデータがあるか確認
     target = db.query(Minute).filter(Minute.id == minute_id).first()
     
     if not target:
-        raise HTTPException(status_code=404, detail="データが見てかりませんでした")
+        raise HTTPException(status_code=404, detail="データが見つかりませんでした")
 
-    # 2. 実ファイルの削除
-    if target.file_path and os.path.exists(target.file_path):
-        try:
-            os.remove(target.file_path)
-            print(f"ファイルを削除しました: {target.file_path}")
-        except Exception as e:
-            # ファイル削除に失敗してもDB削除は進めるか、エラーにするかは設計次第
-            # 今回は安全のためログ出力に留めます
-            print(f"ファイル削除エラー: {e}")
+    try:
+        # 2. 実ファイルの削除（失敗してもDB削除は進めるように try-except を個別に設定）
+        if target.filename:
+            file_full_path = os.path.join("uploads", target.filename)
+            if os.path.exists(file_full_path):
+                os.remove(file_full_path)
 
-    # 3. DBからレコードを削除
-    db.delete(target)
-    db.commit()
-    
-    return {"message": "削除に成功しました（ファイルも消去済み）"}
+        # 3. DBからレコードを削除（ここが重要！）
+        db.delete(target)
+        db.commit()  # ここで初めてDBに「消して確定！」と命令が飛びます
+        
+        return {"message": "議事録とファイルを完全に削除しました"}
+
+    except Exception as e:
+        db.rollback() # エラーが起きたら処理を巻き戻す
+        print(f"削除中にエラー発生: {e}")
+        raise HTTPException(status_code=500, detail=f"内部エラー: {str(e)}")
