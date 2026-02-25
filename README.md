@@ -4,7 +4,7 @@
 
 ## 📺 デモ動作
 
-<div align="center">
+<div>
   <img src="images/Animation.gif" width="70%">
 </div>
 
