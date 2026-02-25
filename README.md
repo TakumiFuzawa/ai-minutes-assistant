@@ -4,7 +4,9 @@
 
 ## 📺 デモ動作
 
-![アプリのデモ動画](images/Animation.gif)
+<div align="center">
+  <img src="images/Animation.gif" width="600px">
+</div>
 
 ## ✨ 主な機能
 - **自動文字起こし**: OpenAI Whisper APIによる高精度な音声解析
