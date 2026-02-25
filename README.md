@@ -4,7 +4,7 @@
 
 ## 📺 デモ動作
 
-![アプリのデモ動画](./images/Animation.gif)
+![アプリのデモ動画](C:\Users\麸澤拓海\Pictures\Screenshots/Animation.gif)
 
 ## ✨ 主な機能
 - **自動文字起こし**: OpenAI Whisper APIによる高精度な音声解析
