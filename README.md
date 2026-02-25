@@ -5,7 +5,7 @@
 ## 📺 デモ動作
 
 <div align="center">
-  <img src="images/Animation.gif" width="600px">
+  <img src="images/Animation.gif" width="500px">
 </div>
 
 ## ✨ 主な機能
