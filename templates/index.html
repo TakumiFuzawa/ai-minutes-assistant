@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI議事録アシスタント</title>
+    <style>
+        :root { --primary: #2563eb; --bg: #f8fafc; --text: #1e293b; }
+        body { font-family: sans-serif; background: var(--bg); color: var(--text); max-width: 900px; margin: 0 auto; padding: 40px 20px; }
+        .card { background: white; padding: 24px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 24px; }
+        h1, h2 { color: var(--primary); text-align: center; }
+        .upload-section { border: 2px dashed #cbd5e1; padding: 30px; text-align: center; border-radius: 12px; }
+        button { background: var(--primary); color: white; border: none; padding: 12px; border-radius: 6px; cursor: pointer; width: 100%; font-weight: bold; margin-top: 10px; }
+        pre { background: #f1f5f9; padding: 15px; border-radius: 8px; white-space: pre-wrap; font-size: 14px; border-left: 4px solid var(--primary); }
+        
+        /* 履歴セクションのスタイル */
+        .history-item { border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 10px; overflow: hidden; }
+        .history-header { background: #fff; padding: 15px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: 0.2s; }
+        .history-header:hover { background: #f1f5f9; }
+        .history-content { display: none; padding: 20px; background: #fafafa; border-top: 1px solid #e2e8f0; }
+        .label { font-weight: bold; color: var(--primary); font-size: 14px; margin-top: 15px; display: block; }
+
+        /* 削除ボタンの見た目を追加 */
+        .delete-btn {
+        color: #ef4444;
+        background: white;
+        border: 1px solid #fecaca;
+        padding: 4px 12px;         /* 上下4px, 左右12pxでコンパクトに */
+        border-radius: 6px;
+        font-size: 12px;
+        cursor: pointer;
+        transition: 0.2s;
+        width: auto !important;     /* これが重要！「100%」を無視させる */
+        min-width: 60px;           /* 最低限の幅 */
+        margin: 0 0 0 10px;        /* 左側に少し余白を作る */
+        line-height: 1.5;
+        }
+
+        .delete-btn:hover {
+        background: #fef2f2;
+        border-color: #ef4444;
+        }
+
+        /* 親要素（ヘッダー）の調整 */
+        .history-header {
+        display: flex;             /* 横並びにする */
+        justify-content: space-between; /* 両端に寄せる */
+        align-items: center;       /* 上下中央揃え */
+        padding: 15px;
+        background: #fff;
+        cursor: pointer;
+            }
+        
+        .copy-btn {
+        font-size: 11px;
+        padding: 2px 8px;
+        background: #f1f5f9;
+        color: #475569;
+        border: 1px solid #cbd5e1;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: all 0.2s;
+        width: auto !important; /* 横幅いっぱいに広がらないように */
+        }
+
+        .copy-btn:hover {
+        background: #e2e8f0;
+        border-color: #94a3b8;
+        }
+
+        .copy-btn.success {
+        background-color: #22c55e !important;
+        border-color: #16a34a !important;
+        color: white !important;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎙️ AI議事録生成アシスタント</h1>
+    
+    <div class="card">
+        <form id="uploadForm">
+            <div class="upload-section">
+                <input type="file" id="audioFile" accept="audio/*" required>
+            </div>
+            <button type="submit" id="submitBtn">AIで解析を開始する</button>
+        </form>
+        <div id="loading" style="display:none; text-align:center; margin-top:10px;">⏳ 解析中...</div>
+    </div>
+
+    <div id="newResult" class="card" style="display:none;">
+        <span class="label">✨ 最新の解析結果</span>
+        <pre id="summaryText"></pre>
+    </div>
+
+    <div class="history-section">
+        <h2>📜 過去の議事録一覧</h2>
+        {% for m in minutes %}
+        <div class="history-item">
+            <div class="history-header">
+                <div onclick="toggleDetail('{{ m.id }}')" style="flex-grow: 1;">
+                    <span>📄 {{ m.filename }}</span>
+                    <span style="color: #64748b; font-size: 12px; margin-left: 10px;">{{ m.created_at.strftime('%Y/%m/%d %H:%M') }}</span>
+                </div>
+                <button class="delete-btn" onclick="deleteMinute('{{ m.id }}')">削除</button>
+            </div>
+
+            <div id="detail-{{ m.id }}" class="history-content">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+                    <span class="label">【要約】</span>
+                    <button class="copy-btn" 
+                            data-copy="{{ m.summary | e }}" 
+                            onclick="handleCopy(this)">コピー</button>
+                </div>
+                <pre>{{ m.summary }}</pre>
+
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 15px;">
+                    <span class="label">【原文】</span>
+                    <button class="copy-btn" 
+                            data-copy="{{ m.raw_text | e }}" 
+                            onclick="handleCopy(this)">コピー</button>
+                </div>
+                <pre>{{ m.raw_text }}</pre>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <script>
+        function toggleDetail(id) {
+            const content = document.getElementById('detail-' + id);
+            content.style.display = content.style.display === 'block' ? 'none' : 'block';
+        }
+
+        // 既存の toggleDetail などの下に追加
+        async function deleteMinute(id) {
+            if (!confirm('この議事録を完全に削除してもよろしいですか？')) return;
+
+            try {
+                const response = await fetch(`/delete/${id}`, { method: 'DELETE' });
+                if (response.ok) {
+                    // 成功したら画面を更新して、消えたことを反映させる
+                    location.reload();
+            } else {
+                alert('削除に失敗しました。');
+            }
+            } catch (err) {
+                console.error('Error:', err);
+                alert('通信エラーが発生しました。');
+            }
+        } 
+
+        let currentDeleteId = null; // 消そうとしているIDを一時保存する変数
+        // 1. ゴミ箱ボタンが押されたとき（モーダルを開く）
+        function deleteMinute(id) {
+            currentDeleteId = id;
+            const modal = document.getElementById('customModal');
+            modal.style.display = 'flex'; // style="display:none" を解除して表示
+        }
+
+        // 2. キャンセルボタンが押されたとき（モーダルを閉じる）
+        function closeModal() {
+            document.getElementById('customModal').style.display = 'none';
+            currentDeleteId = null; // IDをクリア
+        }
+
+        // 3. モーダル内の「削除する」赤ボタンが押されたとき（実際の削除実行）
+        document.getElementById('confirmDeleteBtn').onclick = async () => {
+            if (!currentDeleteId) return;
+        
+            try {
+                const response = await fetch(`/delete/${currentDeleteId}`, { method: 'DELETE' });
+                if (response.ok) {
+                    location.reload(); // 成功したらリロードしてリストを更新
+                } else {
+                    alert('削除に失敗しました');
+                }
+            } catch (err) {
+                console.error('Error:', err);
+                alert('通信エラーが発生しました');
+            } finally {
+                closeModal(); // 処理が終わったら（成功でも失敗でも）モーダルを閉じる
+            }
+        };
+
+        const form = document.getElementById('uploadForm');
+        form.onsubmit = async (e) => {
+            e.preventDefault();
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('submitBtn').disabled = true;
+
+            const formData = new FormData();
+            formData.append('file', document.getElementById('audioFile').files[0]);
+
+            const response = await fetch('/upload', { method: 'POST', body: formData });
+            if (response.ok) {
+                location.reload(); // 保存されたらリロードして一覧を更新
+            } else {
+                alert('エラーが発生しました');
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('submitBtn').disabled = false;
+            }
+        };
+
+        // テキストをクリップボードにコピーする関数
+        async function handleCopy(buttonElement) {
+            // ボタンの属性からテキストを取得
+            const text = buttonElement.getAttribute('data-copy');
+    
+            try {
+                await navigator.clipboard.writeText(text);
+        
+                // フィードバック演出
+                const originalText = buttonElement.innerText;
+                buttonElement.innerText = '✅ コピー完了！';
+                buttonElement.classList.add('success');
+
+                setTimeout(() => {
+                    buttonElement.innerText = originalText;
+                    buttonElement.classList.remove('success'); // 元に戻す
+                }, 2000);
+            } catch (err) {
+                console.error('コピー失敗:', err);
+            }
+        }
+    </script>
+
+    <div id="customModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+    <div class="card" style="max-width:400px; width:90%; text-align:center; animation: fadeIn 0.3s;">
+        <h3 style="margin-top:0;">⚠️ 確認</h3>
+        <p>この議事録を完全に削除してもよろしいですか？</p>
+        <div style="display:flex; gap:10px; margin-top:20px;">
+            <button onclick="closeModal()" style="background:#e2e8f0; color:#475569;">キャンセル</button>
+            <button id="confirmDeleteBtn" style="background:#ef4444; margin:0;">削除する</button>
+        </div>
+    </div>
+</div>
+
+<style>
+@keyframes fadeIn { from { opacity:0; transform:translateY(-20px); } to { opacity:1; transform:translateY(0); } }
+</style>
+
+</body>
+</html>
