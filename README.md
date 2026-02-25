@@ -5,7 +5,7 @@
 ## 📺 デモ動作
 
 <div>
-  <img src="images/Animation.gif" width="70%">
+  <img src="images/Animation.gif" width="50%">
 </div>
 
 ## ✨ 主な機能
